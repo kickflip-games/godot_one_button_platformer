@@ -1,0 +1,29 @@
+[gd_scene load_steps=5 format=3 uid="uid://bh2nptu6iu36y"]
+
+[ext_resource type="Script" path="res://player/player.gd" id="1_pom1k"]
+[ext_resource type="SpriteFrames" uid="uid://c6oaq6bkvtbl3" path="res://player/player.tres" id="2_f2lky"]
+[ext_resource type="AudioStream" uid="uid://k8b3bc3qph25" path="res://player/jump_sfx.ogg" id="3_wughd"]
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_kkuav"]
+size = Vector2(15, 16)
+
+[node name="Player" type="CharacterBody2D"]
+script = ExtResource("1_pom1k")
+
+[node name="AnimatedSprite2D" type="AnimatedSprite2D" parent="."]
+position = Vector2(8, 8)
+sprite_frames = ExtResource("2_f2lky")
+animation = &"walk"
+frame_progress = 0.936507
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="."]
+position = Vector2(7.5, 8)
+shape = SubResource("RectangleShape2D_kkuav")
+
+[node name="WallcheckRaycast" type="RayCast2D" parent="."]
+position = Vector2(8, 8)
+target_position = Vector2(9, 0)
+collide_with_areas = true
+
+[node name="JumpAudio" type="AudioStreamPlayer2D" parent="."]
+stream = ExtResource("3_wughd")
