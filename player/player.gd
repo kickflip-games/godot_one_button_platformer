@@ -1,90 +1,144 @@
 extends CharacterBody2D
 
-
 const SPEED = 100.0
 const JUMP_VELOCITY = -400.0
-const TERMINAL_VELOCITY = 700
+const TERMINAL_VELOCITY = 700.0
+const WALL_SLIDE_SPEED = 200.0
+const WALL_JUMP_VELOCITY = Vector2(-200, -350)
+const HOVER_SPEED = 500.0
+const HOVER_TIME = 0.125
+const JUMP_BUFFER_TIME = 0.1
+const GRAVITY_FACTOR = 1.8
+const WALL_SLIDE_MOMENTUM_FACTOR = 0.8
 
-const JUMP_BUTTON = "ui_accept"
+const JUMP_ACTION = "jump"
 
-@onready var _wallcheck_raycast:RayCast2D = $WallcheckRaycast
-@onready var _sprite:AnimatedSprite2D = $AnimatedSprite2D
-@onready var _jump_sfx:AudioStreamPlayer2D = $JumpAudio
+@onready var sprite: AnimatedSprite2D = $AnimatedSprite2D
+@onready var wall_check: RayCast2D = $WallCheck
+@onready var jump_sfx: AudioStreamPlayer2D = $JumpAudio
 
+var gravity: float = ProjectSettings.get("physics/2d/default_gravity") * GRAVITY_FACTOR
+var jump_buffer_timer: float = 0.0
+var hover_timer: float = 0.0
+var direction: int = 1
+var wall_slide_velocity: float = 0.0
+var has_hovered: bool = false
 
-var gravity: int = ProjectSettings.get("physics/2d/default_gravity")
-
-var direction = 1
-
-var _double_jump_charged := false
-
-enum STATE{
-	IN_AIR,
-	ON_FLOOR,
-}
-
-var state:STATE = STATE.ON_FLOOR
-
-
-func _update_state():
-	if is_on_floor():
-		state = STATE.ON_FLOOR
-	elif not is_zero_approx(velocity.y):
-		state = STATE.IN_AIR
-
+enum State { RUNNING, JUMPING, FALLING, WALL_SLIDING, HOVERING }
+var current_state: State = State.RUNNING
 
 func _physics_process(delta: float) -> void:
-	
-
-	_update_state()
-
-	if state==STATE.ON_FLOOR:
-		_double_jump_charged = true
-	elif state==STATE.IN_AIR:
-		velocity.y = minf(TERMINAL_VELOCITY, velocity.y + gravity * delta)
-	
-	
-	if Input.is_action_just_pressed(JUMP_BUTTON):
-		try_jump()
-	elif Input.is_action_just_released(JUMP_BUTTON) and velocity.y < 0.0:
-		# The player let go of jump early, reduce vertical momentum.
-		velocity.y *= 0.6
-		
-	if $WallcheckRaycast.is_colliding():
-		_dir_switch()
-
-	if direction:
-		velocity.x = direction * SPEED
-
+	update_timers(delta)
+	update_state()
+	apply_gravity(delta)
+	handle_movement()
+	handle_jump()
 	move_and_slide()
+	check_direction_switch()
+	update_animation()
+
+func update_timers(delta: float) -> void:
+	jump_buffer_timer = max(jump_buffer_timer - delta, 0)
+	hover_timer = max(hover_timer - delta, 0)
+
+func update_state() -> void:
+	var previous_state = current_state
 	
-
-
-func _dir_switch():
-	direction *= -1
-	_sprite.flip_h = !_sprite.flip_h
-	_wallcheck_raycast.target_position.x *= -1
-
-
-
-func try_jump() -> void:
 	if is_on_floor():
-		_jump_sfx.pitch_scale = 1.0
-	elif _double_jump_charged:
-		_double_jump_charged = false
-		velocity.x *= 2.5
-		_jump_sfx.pitch_scale = 1.5
+		current_state = State.RUNNING
+		has_hovered = false
+	elif is_on_wall() and velocity.y > 0:
+		current_state = State.WALL_SLIDING
+		has_hovered = false
+		if previous_state != State.WALL_SLIDING:
+			wall_slide_velocity = min(0, velocity.y * WALL_SLIDE_MOMENTUM_FACTOR)
+	elif hover_timer > 0:
+		current_state = State.HOVERING
+	elif velocity.y < 0:
+		current_state = State.JUMPING
 	else:
-		return
+		current_state = State.FALLING
+
+func apply_gravity(delta: float) -> void:
+	if not is_on_floor():
+		if current_state == State.WALL_SLIDING:
+			wall_slide_velocity = min(wall_slide_velocity + gravity * delta * 0.1, WALL_SLIDE_SPEED)
+			velocity.y = wall_slide_velocity
+		elif current_state == State.HOVERING:
+			velocity.y = 0
+		else:
+			velocity.y = min(velocity.y + gravity * delta, TERMINAL_VELOCITY)
+
+func handle_movement() -> void:
+	velocity.x = direction * SPEED
+	if current_state == State.HOVERING:
+		velocity.x = direction * HOVER_SPEED
+
+func handle_jump() -> void:
+	if Input.is_action_just_pressed(JUMP_ACTION):
+		jump_buffer_timer = JUMP_BUFFER_TIME
+	
+	if jump_buffer_timer > 0:
+		if is_on_floor():
+			jump()
+		elif current_state == State.WALL_SLIDING:
+			wall_jump()
+		elif can_hover():
+			hover()
+	
+	if Input.is_action_just_released(JUMP_ACTION) and velocity.y < 0:
+		velocity.y *= 0.5  # Variable jump height
+
+func jump() -> void:
 	velocity.y = JUMP_VELOCITY
-	_jump_sfx.play()
+	jump_buffer_timer = 0
+	play_jump_sound(1.0)
+	CameraManager.shake(0.25, 0.5)
+
+func wall_jump() -> void:
+	velocity = WALL_JUMP_VELOCITY
+	velocity.x *= -wall_check.scale.x  # Jump away from the wall
+	jump_buffer_timer = 0
+	switch_direction()
+	play_jump_sound(1.2)
+	CameraManager.shake(0.25, 0.5)
+
+func hover() -> void:
+	if not has_hovered:
+		hover_timer = HOVER_TIME
+		has_hovered = true
+		play_jump_sound(0.8)
+		CameraManager.shake(0.25, 1.5)
+
+func can_hover() -> bool:
+	return not has_hovered and not is_on_floor() and not is_on_wall()
+
+func play_jump_sound(pitch: float = 1.0) -> void:
+	jump_sfx.pitch_scale = pitch
+	jump_sfx.play()
+
+func check_direction_switch() -> void:
+	if wall_check.is_colliding() and is_on_floor_only():
+		switch_direction()
+		
 
 
-func _draw():
-	var p = _wallcheck_raycast.position
-	draw_line(p, p + _wallcheck_raycast.target_position, Color.RED)
 
+func switch_direction() -> void:
+	direction *= -1
+	wall_check.scale.x *= -1
+	sprite.flip_h = direction < 0
 
-
-func _process(delta):
-	queue_redraw()
+func update_animation() -> void:
+	return
+	#match current_state:
+		#State.RUNNING:
+			#sprite.play("run")
+		#State.JUMPING:
+			#sprite.play("jump")
+		#State.FALLING:
+			#sprite.play("fall")
+		#State.WALL_SLIDING:
+			#sprite.play("wall_slide")
+		#State.HOVERING:
+			#sprite.play("hover")

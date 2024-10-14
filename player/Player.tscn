@@ -7,7 +7,7 @@
 [sub_resource type="RectangleShape2D" id="RectangleShape2D_kkuav"]
 size = Vector2(15, 16)
 
-[node name="Player" type="CharacterBody2D"]
+[node name="Player" type="CharacterBody2D" groups=["Player"]]
 script = ExtResource("1_pom1k")
 
 [node name="AnimatedSprite2D" type="AnimatedSprite2D" parent="."]
@@ -20,7 +20,7 @@ frame_progress = 0.936507
 position = Vector2(7.5, 8)
 shape = SubResource("RectangleShape2D_kkuav")
 
-[node name="WallcheckRaycast" type="RayCast2D" parent="."]
+[node name="WallCheck" type="RayCast2D" parent="."]
 position = Vector2(8, 8)
 target_position = Vector2(9, 0)
 collide_with_areas = true
